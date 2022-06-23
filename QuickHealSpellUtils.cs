@@ -14,7 +14,7 @@ namespace HealingSpell
         public static List<T> LoadResources<T>(string[] names, string assetName) where T : class
         {
             // Grabs the .assets file from the Bundles folder in the mod directory
-            FileInfo[] files = new DirectoryInfo(Application.streamingAssetsPath + "/Mods/HealingSpell_U10/Bundles").GetFiles(assetName + ".bundle", SearchOption.AllDirectories);
+            FileInfo[] files = new DirectoryInfo(Application.streamingAssetsPath + "/Mods/HealingSpell/Bundles").GetFiles(assetName + ".bundle", SearchOption.AllDirectories);
 
             // Unpacks assets (code heavily shortened here by dotPeek, entirely unsure what this does but it works)
             AssetBundle assetBundle = !AssetBundle.GetAllLoadedAssetBundles().Any() ? AssetBundle.LoadFromFile(files[0].FullName) : (AssetBundle.GetAllLoadedAssetBundles().Count(x => files[0].Name.Contains(x.name)) != 0 ? AssetBundle.GetAllLoadedAssetBundles().First(x => files[0].Name.Contains(x.name)) : AssetBundle.LoadFromFile(files[0].FullName));
