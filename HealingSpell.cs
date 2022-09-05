@@ -3,6 +3,9 @@ using System.Linq;
 using ThunderRoad;
 using UnityEngine;
 using UnityEngine.VFX;
+using Newtonsoft.Json;
+using System.IO;
+using System;
 
 namespace HealingSpell
 {
@@ -14,8 +17,31 @@ namespace HealingSpell
         SmashAndCrush,
     }
 
+    [Serializable]
+    public class HealingOptions
+    {
+        // GENERAL SETTINGS
+        public HealType healTypeEnum;
+        public bool useAOEfx;
+        public float healAmount;
+        public float minimumChargeForHeal;
+        public float imbueHealOnKill;
+
+        // CRUSH SETTINGS
+        public float gripThreshold;
+
+        // SMASH SETTINGS
+        public float smashDistance;
+        public float smashVelocity;
+
+        // CONSTANT SETTINGS
+        public float healthPerSecond;
+        public float manaDrainPerSecond;
+    }
+
     public class HealingSpell : SpellCastCharge
     {
+        public const string OPTIONS_FILE_PATH = "\\Mods\\HealingSpell\\HealingOptions.opt";
         public static HealingOptions healingOptions;
         private GameObject vfxOrb;
         private GameObject vfxAoe;
@@ -24,6 +50,14 @@ namespace HealingSpell
         public override void OnCatalogRefresh()
         {
             base.OnCatalogRefresh();
+            try
+            {
+                healingOptions = JsonConvert.DeserializeObject<HealingOptions>(File.ReadAllText(Application.streamingAssetsPath + OPTIONS_FILE_PATH));
+            }
+            catch
+            {
+                Debug.LogError("Missing HealingOptions.opt. Healing Spell WILL break!");
+            }
             var source = QuickHealSpellUtils.LoadResources<GameObject>(new string[2] { "healing_orb.prefab", "healing_aoe.prefab" }, "healingsfx_assets_all");
             QuickHealSpellUtils.healingOrb = source.First(x => x.name == "healing_orb");
             QuickHealSpellUtils.healingAoe = source.First(x => x.name == "healing_aoe");
@@ -87,12 +121,12 @@ namespace HealingSpell
             base.Fire(active);
             if (active)
             {
-                vfxOrb = Object.Instantiate(QuickHealSpellUtils.healingOrb, spellCaster.magicSource);
+                vfxOrb = UnityEngine.Object.Instantiate(QuickHealSpellUtils.healingOrb, spellCaster.magicSource);
                 vfxOrb.transform.localPosition = Vector3.zero;
                 vfxOrb.transform.localScale /= 11f;
                 if (healingOptions.useAOEfx)
                 {
-                    vfxAoe = Object.Instantiate(QuickHealSpellUtils.healingAoe, spellCaster.magicSource);
+                    vfxAoe = UnityEngine.Object.Instantiate(QuickHealSpellUtils.healingAoe, spellCaster.magicSource);
                     vfxAoe.transform.localPosition = Vector3.zero;
                     vfxAoe.transform.localScale /= 11f;
                 }
@@ -158,7 +192,7 @@ namespace HealingSpell
                 time += Time.fixedDeltaTime / (float)(1.0 - seconds / 2.0);
                 yield return Time.fixedDeltaTime;
             }
-            Object.Destroy(vfx);
+            UnityEngine.Object.Destroy(vfx);
         }
     }
 }
