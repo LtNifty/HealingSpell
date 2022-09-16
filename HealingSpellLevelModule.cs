@@ -1,26 +1,45 @@
 ﻿using System.Collections;
 using ThunderRoad;
+using UnityEngine;
 
 namespace HealingSpell
 {
     public class HealingSpellLevelModule : LevelModule
     {
         // GENERAL SETTINGS
+        [Tooltip("Sets which type of Healing Spell mode to use.")]
         public HealType healTypeEnum;
+        [Tooltip("Turns on/off the angelic ring AOE effect.")]
         public bool useAOEfx;
+        [Tooltip("Determines how much the player gets healed when using the Smash, Crush, or SmashAndCrush mode.")]
+        [Range(0, 100)]
         public float healAmount;
+        [Tooltip("Determines how much you need to charge the spell before you can heal using the Smash, Crush, or SmashAndCrush mode.")]
+        [Range(0, 1)]
         public float minimumChargeForHeal;
+        [Tooltip("Determines how much you heal upon killing an enemy with a weapon imbued with the Healing Spell.")]
+        [Range(0, 100)]
         public float imbueHealOnKill;
 
         // CRUSH SETTINGS
+        [Tooltip("Determines how much grip is required to register a Crush.")]
+        [Range(0, 1)]
         public float gripThreshold;
 
         // SMASH SETTINGS
+        [Tooltip("Determines how much distance should be between the charge and the player for a Smash.")]
+        [Range(0, 1)]
         public float smashDistance;
+        [Tooltip("Determines how much velocty a charge should have for a Smash.")]
+        [Range(0, 1)]
         public float smashVelocity;
 
         // CONSTANT SETTINGS
+        [Tooltip("Determines how much health the player should gain per second using Constant.")]
+        [Range(0, 100)]
         public float healthPerSecond;
+        [Tooltip("Determines how much mana the player should lose per second using Constant.")]
+        [Range(0, 100)]
         public float manaDrainPerSecond;
 
         public override IEnumerator OnLoadCoroutine()
