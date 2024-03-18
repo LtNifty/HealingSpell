@@ -1,4 +1,5 @@
-﻿using System.Collections.Generic;
+﻿using System.Collections;
+using System.Collections.Generic;
 using System.Linq;
 using ThunderRoad;
 using UnityEngine;
@@ -11,40 +12,22 @@ namespace HealingSpell
         Constant,
         Crush,
         Smash,
-        SmashAndCrush,
-    }
-
-    public class HealingSpellData : MonoBehaviour
-    {
-        // GENERAL SETTINGS
-        public HealType healTypeEnum;
-        public bool useAOEfx;
-        public float healAmount;
-        public float minimumChargeForHeal;
-
-        // CRUSH SETTINGS
-        public float gripThreshold;
-
-        // SMASH SETTINGS
-        public float smashDistance;
-        public float smashVelocity;
-
-        // CONSTANT SETTINGS
-        public float healthPerSecond;
-        public float manaDrainPerSecond;
     }
 
     public class HealingSpell : SpellCastCharge
     {
-        public static HealingSpellData data;
         private GameObject vfxOrb;
         private GameObject vfxAoe;
         private bool healSuccess;
 
+        public static Vector3 ringLoc;
+        public static bool isRingOn = false;
+        bool crushHealReady = false;
+
         public override void OnCatalogRefresh()
         {
             base.OnCatalogRefresh();
-            var source = QuickHealSpellUtils.LoadResources<GameObject>(new string[2] { "healing_orb.prefab", "healing_aoe.prefab" }, "healingsfx_assets_all");
+            var source = QuickHealSpellUtils.LoadResources<GameObject>(new string[2] { "healing_orb.prefab", "healing_aoe.prefab" }, "healingfx_assets_all");
             QuickHealSpellUtils.healingOrb = source.First(x => x.name == "healing_orb");
             QuickHealSpellUtils.healingAoe = source.First(x => x.name == "healing_aoe");
         }
@@ -53,52 +36,60 @@ namespace HealingSpell
         {
             base.UpdateCaster();
 
-            if (!spellCaster.isFiring) currentCharge = 0.0f;
-            if (currentCharge < data.minimumChargeForHeal) return;
-
-            bool isGripping = PlayerControl.GetHand(spellCaster.ragdollHand.side).gripPressed 
-                && PlayerControl.GetHand(spellCaster.ragdollHand.side).GetAverageCurlNoThumb() > data.gripThreshold 
-                && Player.currentCreature.equipment.GetHeldItem(spellCaster.ragdollHand.side) == null;
-            if (spellCaster.mana.currentMana > 0.0 
-                && (data.healTypeEnum == HealType.Constant 
-                || (data.healTypeEnum == HealType.Crush && isGripping) 
-                || (data.healTypeEnum == HealType.SmashAndCrush && isGripping)))
+            if (crushHealReady &&
+                PlayerControl.GetHand(spellCaster.ragdollHand.side).gripPressed &&
+                PlayerControl.GetHand(spellCaster.ragdollHand.side).GetAverageCurlNoThumb() > HealingSpellScript.crushGripThreshold &&
+                spellCaster.mana.creature.equipment.GetHeldItem(spellCaster.ragdollHand.side) == null)
             {
-                    HealSelf();
+                spellCaster.mana.ConsumeMana(HealingSpellScript.crushManaCost);
+                spellCaster.mana.creature.Heal(HealingSpellScript.crushHealAmt, spellCaster.mana.creature);
             }
-            else if (data.healTypeEnum == HealType.Smash || data.healTypeEnum == HealType.SmashAndCrush)
+
+            // Forcing it to be false every time, the player *must*
+            // crush the spell while they are holding it, otherwise on the next UpdateCaster()
+            // this gets set to false so they can't crush
+            crushHealReady = false;
+
+            if (!spellCaster.isFiring) 
+                return;
+
+            switch (HealingSpellScript.healType)
             {
-                Vector3 spellPos = spellCaster.magicSource.position;
-                Vector3 chestPos = Player.currentCreature.animator.GetBoneTransform(HumanBodyBones.Chest).position;
-                float distance = Vector3.Distance(spellPos, chestPos);
-                Vector3 dir = chestPos - spellPos;
+                case HealType.Constant:
+                    if (currentCharge >= HealingSpellScript.constantMinCharge && spellCaster.mana.CanConsumeMana(HealingSpellScript.constantMPS))
+                    {
+                        // If the player has run out of mana or has no health to heal, stop firing
+                        if (spellCaster.mana.currentMana <= 0)
+                            Fire(false);
 
-                if (distance < data.smashDistance 
-                    && Vector3.Dot(Player.local.transform.rotation * PlayerControl.GetHand(spellCaster.ragdollHand.side).GetHandVelocity(), dir) > data.smashVelocity)
-                    HealSelf();
-            }
-        }
+                        // Constantly drains mana every frame if they aren't max health
+                        if (Player.currentCreature.currentHealth != Player.currentCreature.maxHealth)
+                            spellCaster.mana.ConsumeMana(Time.deltaTime * HealingSpellScript.constantMPS);
 
-        private void HealSelf()
-        {
-            if (data.healTypeEnum == HealType.Crush 
-                || data.healTypeEnum == HealType.Smash 
-                || data.healTypeEnum == HealType.SmashAndCrush)
-            {
-                Player.currentCreature.Heal(data.healAmount, Player.currentCreature);
-                healSuccess = true;
-                Fire(false);
-            } else {
-                // Constantly heals the player every frame
-                Player.currentCreature.Heal(Time.deltaTime * data.healthPerSecond, Player.currentCreature);
+                        // Constantly heals the player every frame
+                        spellCaster.mana.creature.Heal(Time.deltaTime * HealingSpellScript.constantHPS, Player.currentCreature);
+                    }
+                    break;
+                case HealType.Crush:
+                    crushHealReady = currentCharge >= HealingSpellScript.crushMinCharge && spellCaster.mana.CanConsumeMana(HealingSpellScript.crushManaCost);
+                    break;
+                case HealType.Smash:
+                    Vector3 spellPos = spellCaster.magicSource.position;
+                    Vector3 chestPos = Player.currentCreature.animator.GetBoneTransform(HumanBodyBones.Chest).position;
+                    float distance = Vector3.Distance(spellPos, chestPos);
+                    Vector3 dir = chestPos - spellPos;
 
-                // Constantly drains mana every frame if they aren't max health
-                if (Player.currentCreature.currentHealth != Player.currentCreature.maxHealth)
-                    spellCaster.mana.ConsumeMana(Time.deltaTime * data.manaDrainPerSecond);
-
-                // If the player has run out of mana or has no health to heal, stop firing
-                if (spellCaster.mana.currentMana <= 0)
-                    Fire(false);
+                    if (currentCharge >= HealingSpellScript.smashMinCharge && 
+                        spellCaster.mana.CanConsumeMana(HealingSpellScript.smashManaCost) &&
+                        Vector3.Dot(Player.local.transform.rotation * PlayerControl.GetHand(spellCaster.ragdollHand.side).GetHandVelocity(), dir) > HealingSpellScript.smashVelocity &&
+                        distance < HealingSpellScript.smashDistance)
+                    {
+                        spellCaster.mana.ConsumeMana(HealingSpellScript.smashManaCost);
+                        spellCaster.mana.creature.Heal(HealingSpellScript.smashHealAmt, spellCaster.mana.creature);
+                        healSuccess = true;
+                        Fire(false);
+                    }
+                    break;
             }
         }
 
@@ -110,75 +101,113 @@ namespace HealingSpell
                 vfxOrb = Object.Instantiate(QuickHealSpellUtils.healingOrb, spellCaster.magicSource);
                 vfxOrb.transform.localPosition = Vector3.zero;
                 vfxOrb.transform.localScale /= 11f;
-                if (data.useAOEfx)
+                if (HealingSpellScript.useAOEfx)
                 {
                     vfxAoe = Object.Instantiate(QuickHealSpellUtils.healingAoe, spellCaster.magicSource);
                     vfxAoe.transform.localPosition = Vector3.zero;
                     vfxAoe.transform.localScale /= 11f;
                 }
-                return;
-            }
-
-            if (healSuccess)
-            {
-                /* Extract's commented out code. Unsure of what it does.
-                 * var temp = this.chargeEffectData;
-
-                Debug.Log(temp.modules.Count);
-                foreach (var g in temp.modules.Where(x => x.stepCustomId == "2"))
-                {
-                    Debug.Log(g.stepCustomId);
-                    var effect = g.Spawn(temp, false);
-                    effect.Play();
-
-                    Timing.RunCoroutine(DoActionAfter(1f, () => effect.Despawn()));
-                }
-                 */
-
-                var localScale = vfxOrb.transform.localScale;
-                Player.currentCreature.StartCoroutine(LerpVfx(0.2f, vfxOrb, localScale, localScale * 2f));
-                if (data.useAOEfx)
-                {
-                    Player.currentCreature.StartCoroutine(LerpVfx(0.2f, vfxAoe, localScale, localScale * 2f));
-                }
-                PlayerControl.GetHand(spellCaster.ragdollHand.side).HapticPlayClip(Catalog.gameData.haptics.telekinesisThrow, 2f);
-                healSuccess = false;
             }
             else
             {
-                Player.currentCreature.StartCoroutine(LerpVfx(0.2f, vfxOrb, vfxOrb.transform.localScale, Vector3.zero));
-                if (data.useAOEfx)
+                if (healSuccess)
                 {
-                    Player.currentCreature.StartCoroutine(LerpVfx(0.2f, vfxAoe, vfxAoe.transform.localScale, Vector3.zero));
+                    GameManager.local.StartCoroutine(LerpVfx(0.1f, 0.1f, vfxOrb, vfxOrb.transform.localScale, vfxOrb.transform.localScale * 2f));
+
+                    if (HealingSpellScript.useAOEfx)
+                    {
+                        GameManager.local.StartCoroutine(LerpVfx(0.1f, 0.1f, vfxAoe, vfxAoe.transform.localScale, vfxAoe.transform.localScale * 2f));
+                    }
+
+                    PlayerControl.GetHand(spellCaster.ragdollHand.side).HapticPlayClip(Catalog.gameData.haptics.telekinesisThrow, 2f);
+                    healSuccess = false;
                 }
+                else
+                {
+                    GameManager.local.StartCoroutine(LerpVfx(0.1f, 0.1f, vfxOrb, vfxOrb.transform.localScale, Vector3.zero));
+
+                    if (HealingSpellScript.useAOEfx)
+                    {
+                        GameManager.local.StartCoroutine(LerpVfx(0.1f, 0.1f, vfxAoe, vfxAoe.transform.localScale, Vector3.zero));
+                    }
+                }
+
+                spellCaster.isFiring = false;
+                spellCaster.grabbedFire = false;
+                currentCharge = 0.0f;
+                spellCaster.telekinesis.TryRelease(false);
             }
-            spellCaster.isFiring = false;
-            spellCaster.grabbedFire = false;
-            currentCharge = 0.0f;
-            spellCaster.telekinesis.TryRelease(false);
         }
 
-        private static IEnumerator<float> LerpVfx(float seconds, GameObject vfx, Vector3 startScale, Vector3 endScale)
+        public static IEnumerator<float> LerpVfx(float seconds, float delay, GameObject vfx, Vector3 startScale, Vector3 endScale)
         {
             if (vfx == null) yield break;
-
-            var time = 0.0f;
+            
             vfx.transform.SetParent(null);
             vfx.GetComponent<VisualEffect>().playRate = 4f;
             vfx.GetComponent<VisualEffect>().Stop();
-            while (time < 1.0)
+
+            var time = 0.0f;
+            while (time < seconds)
             {
-                time += Time.fixedDeltaTime / (seconds / 2f);
-                vfx.transform.localScale = Vector3.Lerp(startScale, endScale, time);
+                time += Time.fixedDeltaTime;
+                vfx.transform.localScale = Vector3.Lerp(startScale, endScale, time / seconds);
                 yield return Time.fixedDeltaTime;
             }
             time = 0.0f;
-            while (time < 1.0)
+            while (time < delay)
             {
-                time += Time.fixedDeltaTime / (float)(1.0 - seconds / 2.0);
+                time += Time.fixedDeltaTime;
                 yield return Time.fixedDeltaTime;
             }
-            UnityEngine.Object.Destroy(vfx);
+            Object.Destroy(vfx);
+        }
+
+        public override bool OnCrystalUse(RagdollHand hand, bool active)
+        {
+            base.OnCrystalUse(hand, active);
+            return true;
+        }
+
+        public override bool OnCrystalSlam(CollisionInstance collisionInstance)
+        {
+            base.OnCrystalSlam(collisionInstance);
+            // Player.currentCreature.StartCoroutine(HealSlamCoroutine(collisionInstance));
+            return true;
+        }
+
+        private IEnumerator HealSlamCoroutine(CollisionInstance collisionInstance)
+        {
+            if (!isRingOn)
+            {
+                isRingOn = true;
+                ringLoc = collisionInstance.contactPoint;
+
+                GameObject slamRingAOE = Object.Instantiate(QuickHealSpellUtils.healingAoe,
+                                                collisionInstance.contactPoint + new Vector3(0, 0.1f, 0),
+                                                Quaternion.Euler(90f, 0f, 0f));
+
+                slamRingAOE.transform.localScale *= HealingSpellScript.slamRingMult;
+
+                AudioSource source = slamRingAOE.AddComponent<AudioSource>();
+                source.clip = HealingSpellScript.ringClips[0];
+                source.maxDistance = 2.3394f * HealingSpellScript.slamRingMult;
+                source.Play();
+
+                yield return new WaitForSeconds(HealingSpellScript.slamDuration);
+
+                GameManager.local.StartCoroutine(LerpVfx(0.1f, 
+                                                         0.1f,
+                                                         slamRingAOE,
+                                                         slamRingAOE.transform.localScale,
+                                                         Vector3.zero));
+
+                source.Stop();
+                source.clip = HealingSpellScript.ringClips[1];
+                source.Play();
+
+                isRingOn = false;
+            }
         }
     }
 }

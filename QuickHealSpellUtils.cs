@@ -37,18 +37,5 @@ namespace HealingSpell
             Debug.LogError(Assembly.GetExecutingAssembly().GetName() + " found no objects in array. The functions may not work as intended.");
             return null;
         }
-
-        /* Method needed for extract's commented out method in HealingSpell.cs       
-         * public static IEnumerator<float> DoActionAfter(float seconds, System.Action action)
-        {
-            float time = 0;
-            while (time < 1f)
-            {
-                time += Time.fixedDeltaTime / seconds;
-                yield return Time.fixedDeltaTime;
-            }
-
-            action();
-        }*/
     }
 }
